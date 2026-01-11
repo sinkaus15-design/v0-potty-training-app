@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import type { Reward } from "@/lib/types"
-import { Plus, Gift, Trash2, Star, ImageIcon, X, Camera, Info } from "lucide-react"
+import { Plus, Gift, Trash2, Star, ImageIcon, X, Camera, Info, Pencil } from "lucide-react"
 
 interface RewardsManagerProps {
   rewards: Reward[]
@@ -40,6 +40,16 @@ export function RewardsManager({ rewards, profileId, onRewardsChange }: RewardsM
   const [isUploading, setIsUploading] = useState(false)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [editingReward, setEditingReward] = useState<Reward | null>(null)
+  const [editReward, setEditReward] = useState({
+    name: "",
+    description: "",
+    points_cost: "25",
+    icon: "gift",
+    image_url: "",
+  })
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null)
+  const editFileInputRef = useRef<HTMLInputElement>(null)
 
   const customRewardsCount = rewards.filter((r) => r.image_url).length
   const canAddCustomReward = customRewardsCount < 3
@@ -151,6 +161,91 @@ export function RewardsManager({ rewards, profileId, onRewardsChange }: RewardsM
       onRewardsChange(rewards.filter((r) => r.id !== rewardId))
     } catch (error) {
       console.error("Failed to delete reward:", error)
+    }
+  }
+
+  const handleEditReward = (reward: Reward) => {
+    setEditingReward(reward)
+    setEditReward({
+      name: reward.name,
+      description: reward.description || "",
+      points_cost: reward.points_cost.toString(),
+      icon: reward.icon,
+      image_url: reward.image_url || "",
+    })
+    setEditImagePreview(reward.image_url || null)
+  }
+
+  const handleEditImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setEditImagePreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const response = await fetch("/api/upload-reward-image", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await response.json()
+      if (data.url) {
+        setEditReward({ ...editReward, image_url: data.url })
+      }
+    } catch (error) {
+      console.error("Failed to upload image:", error)
+      setEditImagePreview(null)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const clearEditImage = () => {
+    setEditImagePreview(null)
+    setEditReward({ ...editReward, image_url: "" })
+    if (editFileInputRef.current) {
+      editFileInputRef.current.value = ""
+    }
+  }
+
+  const handleUpdateReward = async () => {
+    if (!editingReward || !editReward.name.trim()) return
+    setIsLoading(true)
+
+    const supabase = createClient()
+
+    try {
+      const { data, error } = await supabase
+        .from("rewards")
+        .update({
+          name: editReward.name,
+          description: editReward.description || null,
+          points_cost: Number.parseInt(editReward.points_cost) || 25,
+          icon: editReward.icon,
+          image_url: editReward.image_url || null,
+        })
+        .eq("id", editingReward.id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      onRewardsChange(rewards.map((r) => (r.id === editingReward.id ? data : r)))
+      setEditingReward(null)
+      setEditReward({ name: "", description: "", points_cost: "25", icon: "gift", image_url: "" })
+      setEditImagePreview(null)
+    } catch (error) {
+      console.error("Failed to update reward:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -338,6 +433,124 @@ export function RewardsManager({ rewards, profileId, onRewardsChange }: RewardsM
         </Dialog>
       </div>
 
+      {/* Edit Reward Dialog */}
+      <Dialog open={!!editingReward} onOpenChange={(open) => !open && setEditingReward(null)}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Reward</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Photo Upload */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Camera className="h-4 w-4" />
+                Add a Photo
+                <span className="text-xs text-muted-foreground">(makes it more exciting!)</span>
+              </Label>
+              {editImagePreview ? (
+                <div className="relative w-full h-40 rounded-xl overflow-hidden border border-border">
+                  <img
+                    src={editImagePreview || "/placeholder.svg"}
+                    alt="Reward preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2 h-8 w-8"
+                    onClick={clearEditImage}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => editFileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="flex flex-col items-center justify-center w-full h-32 rounded-xl border-2 border-dashed border-border hover:border-[var(--space-purple)] transition-colors bg-muted/30"
+                >
+                  {isUploading ? (
+                    <div className="animate-spin h-8 w-8 border-2 border-[var(--space-purple)] border-t-transparent rounded-full" />
+                  ) : (
+                    <>
+                      <ImageIcon className="h-10 w-10 text-muted-foreground mb-2" />
+                      <span className="text-sm text-muted-foreground">Tap to upload photo</span>
+                    </>
+                  )}
+                </button>
+              )}
+              <input
+                ref={editFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleEditImageUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Reward Name */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">What is the reward?</Label>
+              <Input
+                id="edit-name"
+                placeholder="e.g., Extra Screen Time, Trip to Park"
+                value={editReward.name}
+                onChange={(e) => setEditReward({ ...editReward, name: e.target.value })}
+                className="h-12 text-base"
+              />
+            </div>
+
+            {/* Description (optional) */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Details (optional)</Label>
+              <Input
+                id="edit-description"
+                placeholder="e.g., 15 minutes of tablet time"
+                value={editReward.description}
+                onChange={(e) => setEditReward({ ...editReward, description: e.target.value })}
+              />
+            </div>
+
+            {/* Points */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-points">Points Required</Label>
+              <Input
+                id="edit-points"
+                type="number"
+                min="1"
+                value={editReward.points_cost}
+                onChange={(e) => setEditReward({ ...editReward, points_cost: e.target.value })}
+                className="h-12 text-base"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingReward(null)
+                  setEditReward({ name: "", description: "", points_cost: "25", icon: "gift", image_url: "" })
+                  setEditImagePreview(null)
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpdateReward}
+                disabled={isLoading || !editReward.name.trim() || isUploading}
+                className="flex-1 bg-gradient-to-r from-[var(--space-purple)] to-[var(--space-blue)]"
+              >
+                {isLoading ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Existing Rewards */}
       <div className="space-y-3">
         {sortedRewards.length === 0 ? (
@@ -378,6 +591,14 @@ export function RewardsManager({ rewards, profileId, onRewardsChange }: RewardsM
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={reward.is_active} onCheckedChange={() => handleToggleActive(reward)} />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEditReward(reward)}
+                    className="h-10 w-10 hover:bg-primary/10"
+                  >
+                    <Pencil className="h-5 w-5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

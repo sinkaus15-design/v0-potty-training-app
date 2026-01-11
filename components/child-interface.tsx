@@ -31,20 +31,46 @@ export function ChildInterface({
   const [points, setPoints] = useState(totalPoints)
   const [buttonPressed, setButtonPressed] = useState<"pee" | "poop" | null>(null)
 
-  // Text-to-speech function
+  // Text-to-speech function - only for potty/help requests
   const speak = (text: string) => {
     if (soundEnabled && "speechSynthesis" in window) {
+      // Cancel any ongoing speech
+      speechSynthesis.cancel()
+      
       const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = 0.85
-      utterance.pitch = 1.1
+      // Use a more natural, warm voice
+      utterance.rate = 0.9
+      utterance.pitch = 1.15
+      utterance.volume = 1.0
+      
+      // Try to use a more natural voice if available
+      const voices = speechSynthesis.getVoices()
+      const preferredVoice = voices.find(
+        (voice) =>
+          voice.name.includes("Google") ||
+          voice.name.includes("Samantha") ||
+          voice.name.includes("Karen") ||
+          (voice.lang.startsWith("en") && voice.localService === false)
+      )
+      if (preferredVoice) {
+        utterance.voice = preferredVoice
+      }
+      
       speechSynthesis.speak(utterance)
     }
   }
 
-  // Greet child on mount
+  // Load voices when available
   useEffect(() => {
-    if (!hasPending) {
-      setTimeout(() => speak(`Hi ${childName}! Tap a button when you need to go.`), 500)
+    if ("speechSynthesis" in window) {
+      // Chrome loads voices asynchronously
+      const loadVoices = () => {
+        speechSynthesis.getVoices()
+      }
+      loadVoices()
+      if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = loadVoices
+      }
     }
   }, [])
 
@@ -120,6 +146,7 @@ export function ChildInterface({
       setHasPending(true)
       setPendingType(type)
 
+      // TTS only for potty/help requests - this is the explicit signal
       speak(`Great job ${childName}! Help is on the way!`)
     } catch (error) {
       console.error("Failed to create request:", error)
@@ -148,7 +175,7 @@ export function ChildInterface({
         {/* Animated points display */}
         <button
           onClick={() => {
-            speak("View your rewards!")
+            // No TTS for navigation
             router.push("/child/rewards")
           }}
           className="transition-transform hover:scale-105 active:scale-95 animate-scale-bounce"
@@ -198,8 +225,6 @@ export function ChildInterface({
           {/* Pee Button - Water/Droplet themed */}
           <button
             onClick={() => handleRequest("pee")}
-            onMouseEnter={() => !hasPending && speak("Pee")}
-            onTouchStart={() => !hasPending && speak("Pee")}
             disabled={hasPending || isSubmitting}
             className={`group relative h-44 w-full rounded-3xl text-3xl font-bold transition-all duration-200 ${
               hasPending && pendingType === "pee"
@@ -243,8 +268,6 @@ export function ChildInterface({
           {/* Poop Button - Planet/Circle themed */}
           <button
             onClick={() => handleRequest("poop")}
-            onMouseEnter={() => !hasPending && speak("Poop")}
-            onTouchStart={() => !hasPending && speak("Poop")}
             disabled={hasPending || isSubmitting}
             className={`group relative h-44 w-full rounded-3xl text-3xl font-bold transition-all duration-200 ${
               hasPending && pendingType === "poop"
@@ -282,7 +305,7 @@ export function ChildInterface({
         {/* Rewards Button - Always visible, encouraging */}
         <button
           onClick={() => {
-            speak("Let's see your rewards!")
+            // No TTS for navigation
             router.push("/child/rewards")
           }}
           className="flex items-center gap-3 mt-4 px-8 py-4 rounded-2xl bg-gradient-to-r from-[var(--star-gold)] to-[oklch(0.75_0.18_60)] text-[oklch(0.15_0.02_60)] font-bold text-xl transition-transform hover:scale-105 active:scale-95"

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { StarField } from "@/components/star-field"
 import { PointsDisplay } from "@/components/points-display"
 import type { Reward } from "@/lib/types"
-import { ArrowLeft, Gift, Star, Volume2, VolumeX, Lock, Sparkles, Trophy } from "lucide-react"
+import { ArrowLeft, Gift, Star, Lock, Sparkles, Trophy } from "lucide-react"
 
 interface RewardsStoreProps {
   childName: string
@@ -22,21 +22,9 @@ export function RewardsStore({ childName, totalPoints, rewards, userId }: Reward
   const [isRedeeming, setIsRedeeming] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
   const [redeemedReward, setRedeemedReward] = useState<Reward | null>(null)
-  const [soundEnabled, setSoundEnabled] = useState(true)
+  // Sound toggle removed - no TTS in rewards
 
-  const speak = (text: string) => {
-    if (soundEnabled && "speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = 0.85
-      utterance.pitch = 1.1
-      speechSynthesis.speak(utterance)
-    }
-  }
-
-  // Greet on mount
-  useEffect(() => {
-    speak(`${childName}, here are your rewards! You have ${totalPoints} points.`)
-  }, [])
+  // TTS removed - no narration for rewards navigation
 
   // Real-time points updates
   useEffect(() => {
@@ -86,7 +74,7 @@ export function RewardsStore({ childName, totalPoints, rewards, userId }: Reward
       setPoints(points - reward.points_cost)
       setRedeemedReward(reward)
       setShowCelebration(true)
-      speak(`Awesome ${childName}! You got ${reward.name}!`)
+      // No TTS - celebration is visual only
     } catch (error) {
       console.error("Failed to redeem reward:", error)
     } finally {
@@ -161,14 +149,6 @@ export function RewardsStore({ childName, totalPoints, rewards, userId }: Reward
             My Rewards
           </h1>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="h-14 w-14 rounded-2xl bg-muted/50"
-          >
-            {soundEnabled ? <Volume2 className="h-7 w-7" /> : <VolumeX className="h-7 w-7" />}
-          </Button>
         </div>
       </header>
 
@@ -198,12 +178,6 @@ export function RewardsStore({ childName, totalPoints, rewards, userId }: Reward
               <button
                 key={reward.id}
                 onClick={() => canAfford && handleRedeem(reward)}
-                onMouseEnter={() =>
-                  speak(canAfford ? `Get ${reward.name}!` : `${reward.name}. You need ${pointsNeeded} more points.`)
-                }
-                onTouchStart={() =>
-                  speak(canAfford ? `Get ${reward.name}!` : `${reward.name}. You need ${pointsNeeded} more points.`)
-                }
                 disabled={!canAfford || isRedeeming}
                 className={`relative w-full rounded-3xl p-5 text-left transition-all duration-200 ${
                   canAfford

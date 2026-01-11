@@ -13,20 +13,22 @@ interface PendingRequestCardProps {
   request: BathroomRequest
   childName: string
   profileId: string
+  onRequestResolved: (requestId: string) => void
 }
 
-export function PendingRequestCard({ request, childName, profileId }: PendingRequestCardProps) {
+export function PendingRequestCard({ request, childName, profileId, onRequestResolved }: PendingRequestCardProps) {
   const [points, setPoints] = useState("10")
   const [isProcessing, setIsProcessing] = useState(false)
 
   const handleComplete = async () => {
+    if (isProcessing) return
     setIsProcessing(true)
     const supabase = createClient()
     const pointsNum = Number.parseInt(points) || 10
 
     try {
       // Update request status
-      await supabase
+      const { error: updateError } = await supabase
         .from("bathroom_requests")
         .update({
           status: "completed",
@@ -35,33 +37,44 @@ export function PendingRequestCard({ request, childName, profileId }: PendingReq
         })
         .eq("id", request.id)
 
+      if (updateError) throw updateError
+
       // Update total points
-      await supabase.rpc("increment_points", {
+      const { error: pointsError } = await supabase.rpc("increment_points", {
         user_id: profileId,
         points_to_add: pointsNum,
       })
+
+      if (pointsError) throw pointsError
+
+      // Immediately remove from UI - deterministic state update
+      onRequestResolved(request.id)
     } catch (error) {
       console.error("Failed to complete request:", error)
-    } finally {
       setIsProcessing(false)
     }
   }
 
   const handleCancel = async () => {
+    if (isProcessing) return
     setIsProcessing(true)
     const supabase = createClient()
 
     try {
-      await supabase
+      const { error } = await supabase
         .from("bathroom_requests")
         .update({
           status: "cancelled",
           completed_at: new Date().toISOString(),
         })
         .eq("id", request.id)
+
+      if (error) throw error
+
+      // Immediately remove from UI - deterministic state update
+      onRequestResolved(request.id)
     } catch (error) {
       console.error("Failed to cancel request:", error)
-    } finally {
       setIsProcessing(false)
     }
   }

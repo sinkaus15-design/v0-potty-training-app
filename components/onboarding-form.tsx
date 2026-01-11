@@ -13,6 +13,7 @@ import { ChevronRight, ChevronLeft, User, Users, Lock } from "lucide-react"
 
 interface OnboardingFormProps {
   userId: string
+  isAddingChild?: boolean
 }
 
 type Step = "child" | "caregivers" | "passcode"
@@ -23,9 +24,9 @@ interface CaregiverInput {
   phone: string
 }
 
-export function OnboardingForm({ userId }: OnboardingFormProps) {
+export function OnboardingForm({ userId, isAddingChild = false }: OnboardingFormProps) {
   const router = useRouter()
-  const [step, setStep] = useState<Step>("child")
+  const [step, setStep] = useState<Step>(isAddingChild ? "child" : "child")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -90,68 +91,93 @@ export function OnboardingForm({ userId }: OnboardingFormProps) {
     }
 
     try {
-      // Create profile
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: userId,
-        child_name: childName,
-        child_age: childAge ? Number.parseInt(childAge) : null,
-        caregiver_passcode: fullPasscode,
-        total_points: 0,
-      })
+      if (isAddingChild) {
+        // Just add a new child to the children table
+        const { error: childError } = await supabase.from("children").insert({
+          user_id: userId,
+          child_name: childName,
+          child_age: childAge ? Number.parseInt(childAge) : null,
+          total_points: 0,
+        })
 
-      if (profileError) throw profileError
+        if (childError) throw childError
 
-      // Create caregivers
-      const validCaregivers = caregivers.filter((c) => c.name.trim())
-      if (validCaregivers.length > 0) {
-        const { error: caregiversError } = await supabase.from("caregivers").insert(
-          validCaregivers.map((c) => ({
+        router.push("/mode-select")
+        router.refresh()
+      } else {
+        // Create profile
+        const { error: profileError } = await supabase.from("profiles").insert({
+          id: userId,
+          child_name: childName,
+          child_age: childAge ? Number.parseInt(childAge) : null,
+          caregiver_passcode: fullPasscode,
+          total_points: 0,
+        })
+
+        if (profileError) throw profileError
+
+        // Also create a child entry for backward compatibility
+        const { error: childError } = await supabase.from("children").insert({
+          user_id: userId,
+          child_name: childName,
+          child_age: childAge ? Number.parseInt(childAge) : null,
+          total_points: 0,
+        })
+
+        if (childError) throw childError
+
+        // Create caregivers
+        const validCaregivers = caregivers.filter((c) => c.name.trim())
+        if (validCaregivers.length > 0) {
+          const { error: caregiversError } = await supabase.from("caregivers").insert(
+            validCaregivers.map((c) => ({
+              profile_id: userId,
+              name: c.name,
+              email: c.email || null,
+              phone: c.phone || null,
+            })),
+          )
+
+          if (caregiversError) throw caregiversError
+        }
+
+        // Create default rewards
+        const { error: rewardsError } = await supabase.from("rewards").insert([
+          {
             profile_id: userId,
-            name: c.name,
-            email: c.email || null,
-            phone: c.phone || null,
-          })),
-        )
+            name: "Extra Screen Time",
+            description: "15 minutes of extra screen time",
+            points_cost: 50,
+            icon: "monitor",
+          },
+          {
+            profile_id: userId,
+            name: "Favorite Snack",
+            description: "Pick your favorite snack",
+            points_cost: 30,
+            icon: "cookie",
+          },
+          {
+            profile_id: userId,
+            name: "Stay Up Late",
+            description: "Stay up 30 minutes past bedtime",
+            points_cost: 100,
+            icon: "moon",
+          },
+          {
+            profile_id: userId,
+            name: "Pick Dinner",
+            description: "Choose what's for dinner",
+            points_cost: 75,
+            icon: "utensils",
+          },
+        ])
 
-        if (caregiversError) throw caregiversError
+        if (rewardsError) throw rewardsError
+
+        router.push("/mode-select")
+        router.refresh()
       }
-
-      // Create default rewards
-      const { error: rewardsError } = await supabase.from("rewards").insert([
-        {
-          profile_id: userId,
-          name: "Extra Screen Time",
-          description: "15 minutes of extra screen time",
-          points_cost: 50,
-          icon: "monitor",
-        },
-        {
-          profile_id: userId,
-          name: "Favorite Snack",
-          description: "Pick your favorite snack",
-          points_cost: 30,
-          icon: "cookie",
-        },
-        {
-          profile_id: userId,
-          name: "Stay Up Late",
-          description: "Stay up 30 minutes past bedtime",
-          points_cost: 100,
-          icon: "moon",
-        },
-        {
-          profile_id: userId,
-          name: "Pick Dinner",
-          description: "Choose what's for dinner",
-          points_cost: 75,
-          icon: "utensils",
-        },
-      ])
-
-      if (rewardsError) throw rewardsError
-
-      router.push("/mode-select")
-      router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to complete setup")
     } finally {
@@ -177,12 +203,12 @@ export function OnboardingForm({ userId }: OnboardingFormProps) {
           ))}
         </div>
         <CardTitle className="text-2xl">
-          {step === "child" && "Who's the Star?"}
+          {step === "child" && (isAddingChild ? "Add Another Child" : "Who's the Star?")}
           {step === "caregivers" && "Add Caregivers"}
           {step === "passcode" && "Set Passcode"}
         </CardTitle>
         <CardDescription>
-          {step === "child" && "Tell us about the child using PottyPal"}
+          {step === "child" && (isAddingChild ? "Add a new child to your account" : "Tell us about the child using PottyPal")}
           {step === "caregivers" && "Who will receive bathroom notifications?"}
           {step === "passcode" && "Caregivers will use this to access settings"}
         </CardDescription>
@@ -214,18 +240,56 @@ export function OnboardingForm({ userId }: OnboardingFormProps) {
                 className="h-12 bg-input/50"
               />
             </div>
-            <Button
-              onClick={() => setStep("caregivers")}
-              disabled={!childName.trim()}
-              className="h-12 bg-gradient-to-r from-[var(--space-purple)] to-[var(--space-blue)]"
-            >
-              Continue
-              <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
+            {isAddingChild ? (
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/mode-select")}
+                  className="h-12 flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    setIsLoading(true)
+                    setError(null)
+                    const supabase = createClient()
+                    try {
+                      const { error: childError } = await supabase.from("children").insert({
+                        user_id: userId,
+                        child_name: childName,
+                        child_age: childAge ? Number.parseInt(childAge) : null,
+                        total_points: 0,
+                      })
+                      if (childError) throw childError
+                      router.push("/mode-select")
+                      router.refresh()
+                    } catch (err: unknown) {
+                      setError(err instanceof Error ? err.message : "Failed to add child")
+                    } finally {
+                      setIsLoading(false)
+                    }
+                  }}
+                  disabled={isLoading || !childName.trim()}
+                  className="h-12 flex-1 bg-gradient-to-r from-[var(--space-purple)] to-[var(--space-blue)]"
+                >
+                  {isLoading ? "Adding..." : "Add Child"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={() => setStep("caregivers")}
+                disabled={!childName.trim()}
+                className="h-12 bg-gradient-to-r from-[var(--space-purple)] to-[var(--space-blue)]"
+              >
+                Continue
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            )}
           </div>
         )}
 
-        {step === "caregivers" && (
+        {step === "caregivers" && !isAddingChild && (
           <div className="flex flex-col gap-5">
             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-[var(--space-purple)] to-[var(--space-blue)]">
               <Users className="h-10 w-10 text-primary-foreground" />
@@ -292,7 +356,7 @@ export function OnboardingForm({ userId }: OnboardingFormProps) {
           </div>
         )}
 
-        {step === "passcode" && (
+        {step === "passcode" && !isAddingChild && (
           <div className="flex flex-col gap-5">
             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-[var(--space-purple)] to-[var(--space-blue)]">
               <Lock className="h-10 w-10 text-primary-foreground" />

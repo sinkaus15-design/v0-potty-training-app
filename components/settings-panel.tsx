@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Profile } from "@/lib/types"
-import { Lock, User, Check } from "lucide-react"
+import { Lock, User, Check, Star, Plus, Minus } from "lucide-react"
 
 interface SettingsPanelProps {
   profile: Profile
@@ -19,6 +19,8 @@ export function SettingsPanel({ profile }: SettingsPanelProps) {
   const [passcode, setPasscode] = useState(["", "", "", ""])
   const [isSaving, setIsSaving] = useState(false)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
+  const [totalPoints, setTotalPoints] = useState(profile.total_points.toString())
+  const [isAdjustingPoints, setIsAdjustingPoints] = useState(false)
 
   const handlePasscodeChange = (index: number, value: string) => {
     if (value.length <= 1 && /^\d*$/.test(value)) {
@@ -75,6 +77,32 @@ export function SettingsPanel({ profile }: SettingsPanelProps) {
     }
   }
 
+  const handleAdjustPoints = async () => {
+    const points = Number.parseInt(totalPoints)
+    if (isNaN(points) || points < 0) return
+
+    setIsSaving(true)
+    const supabase = createClient()
+
+    try {
+      await supabase.from("profiles").update({ total_points: points }).eq("id", profile.id)
+
+      setSavedMessage("Points updated!")
+      setIsAdjustingPoints(false)
+      setTimeout(() => setSavedMessage(null), 2000)
+    } catch (error) {
+      console.error("Failed to update points:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handlePointsChange = (delta: number) => {
+    const current = Number.parseInt(totalPoints) || 0
+    const newValue = Math.max(0, current + delta)
+    setTotalPoints(newValue.toString())
+  }
+
   return (
     <div className="space-y-4">
       {savedMessage && (
@@ -119,6 +147,88 @@ export function SettingsPanel({ profile }: SettingsPanelProps) {
           >
             Save Changes
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Points Adjustment */}
+      <Card className="border-border/50 bg-card/80">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Star className="h-4 w-4" />
+            Points Management
+          </CardTitle>
+          <CardDescription>Manually adjust total points</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAdjustingPoints ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-center gap-4">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handlePointsChange(-10)}
+                  className="h-12 w-12"
+                >
+                  <Minus className="h-5 w-5" />
+                </Button>
+                <div className="flex flex-col items-center gap-1">
+                  <Input
+                    type="number"
+                    value={totalPoints}
+                    onChange={(e) => setTotalPoints(e.target.value)}
+                    className="h-14 w-32 text-center text-2xl font-bold bg-input/50"
+                    min="0"
+                  />
+                  <span className="text-xs text-muted-foreground">Total Points</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handlePointsChange(10)}
+                  className="h-12 w-12"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsAdjustingPoints(false)
+                    setTotalPoints(profile.total_points.toString())
+                  }}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAdjustPoints}
+                  disabled={isSaving}
+                  className="flex-1 bg-gradient-to-r from-[var(--space-purple)] to-[var(--space-blue)]"
+                >
+                  Save Points
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                <div>
+                  <p className="text-sm text-muted-foreground">Current Points</p>
+                  <p className="text-2xl font-bold text-[var(--star-gold)]">{profile.total_points}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsAdjustingPoints(true)
+                    setTotalPoints(profile.total_points.toString())
+                  }}
+                >
+                  Adjust Points
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

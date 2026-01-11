@@ -8,6 +8,16 @@ export interface Profile {
   updated_at: string
 }
 
+export interface Child {
+  id: string
+  user_id: string
+  child_name: string
+  child_age: number | null
+  total_points: number
+  created_at: string
+  updated_at: string
+}
+
 export interface Caregiver {
   id: string
   profile_id: string
@@ -21,7 +31,8 @@ export interface Caregiver {
 
 export interface BathroomRequest {
   id: string
-  profile_id: string
+  profile_id?: string // Legacy support
+  child_id?: string // New multi-child support
   request_type: "pee" | "poop"
   status: "pending" | "completed" | "cancelled"
   points_awarded: number
@@ -32,7 +43,8 @@ export interface BathroomRequest {
 
 export interface Reward {
   id: string
-  profile_id: string
+  profile_id?: string // Legacy support
+  child_id?: string // New multi-child support
   name: string
   description: string | null
   points_cost: number
@@ -44,7 +56,8 @@ export interface Reward {
 
 export interface RedeemedReward {
   id: string
-  profile_id: string
+  profile_id?: string // Legacy support
+  child_id?: string // New multi-child support
   reward_id: string
   points_spent: number
   redeemed_at: string

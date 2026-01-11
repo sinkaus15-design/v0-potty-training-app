@@ -51,27 +51,35 @@ export function CaregiverDashboard({
           table: "bathroom_requests",
           filter: `profile_id=eq.${profile.id}`,
         },
-        async () => {
-          // Refresh pending requests
-          const { data: pending } = await supabase
-            .from("bathroom_requests")
-            .select("*")
-            .eq("profile_id", profile.id)
-            .eq("status", "pending")
-            .order("created_at", { ascending: false })
+        async (payload) => {
+          // Only refresh if this is a new request being added
+          // If it's an update (status change), we handle it optimistically via onRequestResolved
+          if (payload.eventType === "INSERT") {
+            const { data: pending } = await supabase
+              .from("bathroom_requests")
+              .select("*")
+              .eq("profile_id", profile.id)
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
 
-          if (pending) setPendingRequests(pending)
-
-          // Refresh history
-          const { data: hist } = await supabase
-            .from("bathroom_requests")
-            .select("*")
-            .eq("profile_id", profile.id)
-            .neq("status", "pending")
-            .order("created_at", { ascending: false })
-            .limit(20)
-
-          if (hist) setHistory(hist)
+            if (pending) setPendingRequests(pending)
+          } else if (payload.eventType === "UPDATE") {
+            // Remove from pending if status changed
+            const newStatus = (payload.new as { status?: string })?.status
+            const requestId = (payload.new as { id?: string })?.id
+            if (newStatus && newStatus !== "pending" && requestId) {
+              setPendingRequests((prev) => prev.filter((r) => r.id !== requestId))
+              // Refresh history to include the updated request
+              const { data: hist } = await supabase
+                .from("bathroom_requests")
+                .select("*")
+                .eq("profile_id", profile.id)
+                .neq("status", "pending")
+                .order("created_at", { ascending: false })
+                .limit(20)
+              if (hist) setHistory(hist)
+            }
+          }
         },
       )
       .on(
@@ -167,6 +175,15 @@ export function CaregiverDashboard({
                   request={request}
                   childName={profile.child_name}
                   profileId={profile.id}
+                  onRequestResolved={(requestId) => {
+                    // Immediately remove from pending requests - deterministic state update
+                    setPendingRequests((prev) => prev.filter((r) => r.id !== requestId))
+                    // Add to history
+                    const resolvedRequest = pendingRequests.find((r) => r.id === requestId)
+                    if (resolvedRequest) {
+                      setHistory((prev) => [resolvedRequest, ...prev].slice(0, 20))
+                    }
+                  }}
                 />
               ))
             )}

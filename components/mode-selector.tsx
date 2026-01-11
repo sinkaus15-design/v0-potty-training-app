@@ -2,24 +2,35 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
-import { Gamepad2, Settings } from "lucide-react"
+import { Gamepad2, Settings, Plus, User, Edit2, Pencil } from "lucide-react"
+import type { Child, Profile } from "@/lib/types"
+import { PottyPalLogo } from "@/components/pottypal-logo"
 
 interface ModeSelectorProps {
-  childName: string
+  profile: Profile | null
+  children: Child[]
 }
 
-export function ModeSelector({ childName }: ModeSelectorProps) {
+export function ModeSelector({ profile, children: initialChildren }: ModeSelectorProps) {
   const router = useRouter()
   const [showPasscode, setShowPasscode] = useState(false)
   const [passcode, setPasscode] = useState(["", "", "", ""])
   const [error, setError] = useState<string | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
+  const [children, setChildren] = useState(initialChildren)
+  const [caregiverDisplayName, setCaregiverDisplayName] = useState("Caregiver Dashboard")
+  const [editingChildId, setEditingChildId] = useState<string | null>(null)
+  const [editingChildName, setEditingChildName] = useState("")
+  const [isEditingCaregiverName, setIsEditingCaregiverName] = useState(false)
+  const [tempCaregiverName, setTempCaregiverName] = useState("Caregiver Dashboard")
+  const [isSaving, setIsSaving] = useState(false)
 
   const handlePasscodeChange = (index: number, value: string) => {
     if (value.length <= 1 && /^\d*$/.test(value)) {
@@ -41,6 +52,49 @@ export function ModeSelector({ childName }: ModeSelectorProps) {
     }
   }
 
+  // Load children and caregiver display name on mount
+  useEffect(() => {
+    const loadData = async () => {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) return
+
+      // Load children
+      const { data: childrenData } = await supabase
+        .from("children")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+
+      if (childrenData && childrenData.length > 0) {
+        setChildren(childrenData)
+      }
+
+      // Load caregiver display name from profile
+      if (profile) {
+        try {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("caregiver_display_name")
+            .eq("id", user.id)
+            .maybeSingle()
+
+          if (profileData?.caregiver_display_name) {
+            setCaregiverDisplayName(profileData.caregiver_display_name)
+            setTempCaregiverName(profileData.caregiver_display_name)
+          }
+        } catch (error) {
+          // Column might not exist yet, use default
+          console.log("caregiver_display_name column may not exist yet")
+        }
+      }
+    }
+    loadData()
+  }, [profile])
+
   const verifyPasscode = async () => {
     setIsVerifying(true)
     setError(null)
@@ -56,13 +110,13 @@ export function ModeSelector({ childName }: ModeSelectorProps) {
       return
     }
 
-    const { data: profile } = await supabase
+    const { data: profileData } = await supabase
       .from("profiles")
       .select("caregiver_passcode")
       .eq("id", user.id)
       .maybeSingle()
 
-    if (profile?.caregiver_passcode === passcode.join("")) {
+    if (profileData?.caregiver_passcode === passcode.join("")) {
       router.push("/caregiver")
     } else {
       setError("Incorrect passcode")
@@ -71,6 +125,74 @@ export function ModeSelector({ childName }: ModeSelectorProps) {
     }
 
     setIsVerifying(false)
+  }
+
+  const handleChildSelect = (childId: string) => {
+    router.push(`/child?childId=${childId}`)
+  }
+
+  const handleAddChild = () => {
+    router.push("/onboarding?addChild=true")
+  }
+
+  const handleEditChildName = async (childId: string) => {
+    if (!editingChildName.trim()) return
+    setIsSaving(true)
+
+    const supabase = createClient()
+    try {
+      await supabase
+        .from("children")
+        .update({ child_name: editingChildName.trim() })
+        .eq("id", childId)
+
+      setChildren(children.map((c) => (c.id === childId ? { ...c, child_name: editingChildName.trim() } : c)))
+      setEditingChildId(null)
+      setEditingChildName("")
+    } catch (error) {
+      console.error("Failed to update child name:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSaveCaregiverName = async () => {
+    if (!tempCaregiverName.trim()) return
+    setIsSaving(true)
+
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user || !profile) {
+      setIsSaving(false)
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ caregiver_display_name: tempCaregiverName.trim() })
+        .eq("id", user.id)
+
+      if (error) {
+        // If column doesn't exist, inform user they need to run migration
+        if (error.message?.includes("column") || error.code === "42703") {
+          console.error("caregiver_display_name column does not exist. Please run migration script 004-add-caregiver-display-name.sql")
+          alert("Please run the database migration to enable this feature. See scripts/004-add-caregiver-display-name.sql")
+          return
+        }
+        throw error
+      }
+
+      setCaregiverDisplayName(tempCaregiverName.trim())
+      setIsEditingCaregiverName(false)
+    } catch (error) {
+      console.error("Failed to update caregiver name:", error)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   if (showPasscode) {
@@ -123,32 +245,182 @@ export function ModeSelector({ childName }: ModeSelectorProps) {
     )
   }
 
+  // Determine which children to show
+  // If children table has entries, use those. Otherwise fall back to profile.
+  const displayChildren = children.length > 0 
+    ? children 
+    : profile 
+      ? [{ id: profile.id, child_name: profile.child_name, user_id: profile.id, child_age: profile.child_age, total_points: profile.total_points, created_at: "", updated_at: "" } as Child]
+      : []
+
   return (
     <div className="flex flex-col gap-6">
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-foreground">PottyPal</h1>
-        <p className="mt-1 text-muted-foreground">Who's using the app?</p>
+        <PottyPalLogo size="lg" showText={true} className="mb-4" />
+        <p className="mt-2 text-muted-foreground">Who's using the app?</p>
       </div>
 
       <div className="flex flex-col gap-4">
-        {/* Child Mode Button */}
+        {/* Child Mode Buttons - Multiple children support */}
+        {displayChildren.map((child) => (
+          <div key={child.id} className="relative group">
+            <Button
+              onClick={() => handleChildSelect(child.id)}
+              className="h-28 w-full flex-col gap-2 bg-gradient-to-br from-[var(--space-purple)] to-[var(--space-blue)] hover:opacity-90 transition-opacity animate-pulse-glow"
+            >
+              <Gamepad2 className="h-10 w-10" />
+              {editingChildId === child.id ? (
+                <div className="flex items-center gap-2 w-full px-4">
+                  <Input
+                    value={editingChildName}
+                    onChange={(e) => setEditingChildName(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        handleEditChildName(child.id)
+                      } else if (e.key === "Escape") {
+                        setEditingChildId(null)
+                        setEditingChildName("")
+                      }
+                    }}
+                    className="h-8 text-center font-bold bg-background/90"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <>
+                  <span className="text-lg font-bold">{child.child_name}</span>
+                  {child.total_points > 0 && (
+                    <span className="text-sm opacity-90">{child.total_points} points</span>
+                  )}
+                </>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-background"
+              onClick={(e) => {
+                e.stopPropagation()
+                setEditingChildId(child.id)
+                setEditingChildName(child.child_name)
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            {editingChildId === child.id && (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleEditChildName(child.id)
+                  }}
+                  disabled={isSaving || !editingChildName.trim()}
+                  className="h-7 text-xs"
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingChildId(null)
+                    setEditingChildName("")
+                  }}
+                  className="h-7 text-xs"
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Add Child Button - Always show for authenticated users */}
         <Button
-          onClick={() => router.push("/child")}
-          className="h-32 flex-col gap-3 bg-gradient-to-br from-[var(--space-purple)] to-[var(--space-blue)] hover:opacity-90 transition-opacity animate-pulse-glow"
+          variant="outline"
+          onClick={handleAddChild}
+          className="h-20 flex-col gap-2 border-dashed border-2 border-muted-foreground/30 hover:border-[var(--space-purple)]"
         >
-          <Gamepad2 className="h-12 w-12" />
-          <span className="text-xl font-bold">{childName}</span>
+          <Plus className="h-6 w-6" />
+          <span className="text-sm">Add Another Child</span>
         </Button>
 
         {/* Caregiver Mode Button */}
-        <Button
-          variant="outline"
-          onClick={() => setShowPasscode(true)}
-          className="h-20 flex-col gap-2 border-muted-foreground/30"
-        >
-          <Settings className="h-8 w-8" />
-          <span className="text-base">Caregiver Dashboard</span>
-        </Button>
+        <div className="relative group">
+          <Button
+            variant="outline"
+            onClick={() => setShowPasscode(true)}
+            className="h-20 w-full flex-col gap-2 border-muted-foreground/30"
+          >
+            <Settings className="h-8 w-8" />
+            {isEditingCaregiverName ? (
+              <Input
+                value={tempCaregiverName}
+                onChange={(e) => setTempCaregiverName(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    handleSaveCaregiverName()
+                  } else if (e.key === "Escape") {
+                    setIsEditingCaregiverName(false)
+                    setTempCaregiverName(caregiverDisplayName)
+                  }
+                }}
+                className="h-8 text-center font-bold bg-background/90 w-48"
+                autoFocus
+              />
+            ) : (
+              <span className="text-base">{caregiverDisplayName}</span>
+            )}
+          </Button>
+          {!isEditingCaregiverName && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 hover:bg-background"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsEditingCaregiverName(true)
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {isEditingCaregiverName && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-2">
+              <Button
+                size="sm"
+                variant="default"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleSaveCaregiverName()
+                }}
+                disabled={isSaving || !tempCaregiverName.trim()}
+                className="h-7 text-xs"
+              >
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsEditingCaregiverName(false)
+                  setTempCaregiverName(caregiverDisplayName)
+                }}
+                className="h-7 text-xs"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

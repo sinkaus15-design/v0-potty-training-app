@@ -13,9 +13,18 @@ export default async function ModeSelectPage() {
     redirect("/auth/login")
   }
 
+  // Get profile (for passcode and backward compatibility)
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
 
-  if (!profile) {
+  // Get children (new multi-child support)
+  const { data: children } = await supabase
+    .from("children")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+
+  // If no profile and no children, redirect to onboarding
+  if (!profile && (!children || children.length === 0)) {
     redirect("/onboarding")
   }
 
@@ -23,7 +32,7 @@ export default async function ModeSelectPage() {
     <main className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden p-6">
       <StarField />
       <div className="relative z-10 w-full max-w-sm">
-        <ModeSelector childName={profile.child_name} />
+        <ModeSelector profile={profile} children={children || []} />
       </div>
     </main>
   )
