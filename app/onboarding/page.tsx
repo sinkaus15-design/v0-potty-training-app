@@ -6,7 +6,7 @@ import { StarField } from "@/components/star-field"
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const supabase = await createClient()
   const {
@@ -20,12 +20,13 @@ export default async function OnboardingPage({
   // Check if already has profile
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
 
-  // Handle searchParams - could be string or string[]
-  const addChild = searchParams?.addChild
+  // Handle searchParams - could be string or string[] (await in Next.js 15+)
+  const params = await searchParams
+  const addChild = params.addChild
   const isAddingChild = 
     addChild === "true" || 
     (typeof addChild === "string" && addChild !== "") ||
-    (Array.isArray(addChild) && addChild.length > 0)
+    (Array.isArray(addChild) && addChild.length > 0 && addChild[0] !== "")
 
   // If adding a child, allow even if profile exists
   if (profile && !isAddingChild) {

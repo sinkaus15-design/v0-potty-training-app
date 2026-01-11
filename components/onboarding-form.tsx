@@ -240,6 +240,7 @@ export function OnboardingForm({ userId, isAddingChild = false }: OnboardingForm
                 className="h-12 bg-input/50"
               />
             </div>
+            {error && <p className="text-center text-sm text-destructive">{error}</p>}
             {isAddingChild ? (
               <div className="flex gap-3">
                 <Button
@@ -255,17 +256,42 @@ export function OnboardingForm({ userId, isAddingChild = false }: OnboardingForm
                     setError(null)
                     const supabase = createClient()
                     try {
-                      const { error: childError } = await supabase.from("children").insert({
+                      const { data, error: childError } = await supabase.from("children").insert({
                         user_id: userId,
                         child_name: childName,
                         child_age: childAge ? Number.parseInt(childAge) : null,
                         total_points: 0,
                       })
-                      if (childError) throw childError
+                      
+                      if (childError) {
+                        console.error("Supabase error:", childError)
+                        throw childError
+                      }
+                      
+                      if (!data) {
+                        throw new Error("No data returned from insert")
+                      }
+                      
                       router.push("/mode-select")
                       router.refresh()
                     } catch (err: unknown) {
-                      setError(err instanceof Error ? err.message : "Failed to add child")
+                      console.error("Failed to add child:", err)
+                      console.error("Error type:", typeof err)
+                      console.error("Error keys:", err && typeof err === "object" ? Object.keys(err) : "N/A")
+                      
+                      let errorMessage = "Failed to add child"
+                      if (err instanceof Error) {
+                        errorMessage = err.message || "Failed to add child"
+                      } else if (err && typeof err === "object") {
+                        if ("message" in err && err.message) {
+                          errorMessage = String(err.message)
+                        } else if ("details" in err && err.details) {
+                          errorMessage = String(err.details)
+                        } else if ("hint" in err && err.hint) {
+                          errorMessage = String(err.hint)
+                        }
+                      }
+                      setError(errorMessage)
                     } finally {
                       setIsLoading(false)
                     }

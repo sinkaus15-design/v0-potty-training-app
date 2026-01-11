@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     // Create unique filename
-    const fileExt = file.name.split(".").pop()
+    const fileExt = file.name.split(".").pop() || "jpg"
     const fileName = `${user.id}/${Date.now()}.${fileExt}`
 
     // Upload to Supabase Storage
