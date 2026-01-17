@@ -51,7 +51,7 @@ export function CaregiverDashboard({
           table: "bathroom_requests",
           filter: `profile_id=eq.${profile.id}`,
         },
-        async (payload) => {
+        async (payload: any) => {
           // Only refresh if this is a new request being added
           // If it's an update (status change), we handle it optimistically via onRequestResolved
           if (payload.eventType === "INSERT") {
