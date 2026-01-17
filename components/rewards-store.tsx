@@ -8,6 +8,7 @@ import { StarField } from "@/components/star-field"
 import { PointsDisplay } from "@/components/points-display"
 import type { Reward } from "@/lib/types"
 import { ArrowLeft, Gift, Star, Lock, Sparkles, Trophy } from "lucide-react"
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 
 interface RewardsStoreProps {
   childName: string
@@ -40,7 +41,7 @@ export function RewardsStore({ childName, totalPoints, rewards, userId }: Reward
           table: "profiles",
           filter: `id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: RealtimePostgresChangesPayload<{ [key: string]: any }>) => {
           if (payload.new && typeof payload.new === "object" && "total_points" in payload.new) {
             setPoints(payload.new.total_points as number)
           }

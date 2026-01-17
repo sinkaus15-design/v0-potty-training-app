@@ -13,6 +13,7 @@ import { CaregiversManager } from "@/components/caregivers-manager"
 import { SettingsPanel } from "@/components/settings-panel"
 import { PointsDisplay } from "@/components/points-display"
 import type { Profile, BathroomRequest, Reward, Caregiver } from "@/lib/types"
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 import { Home, Bell, Clock, Gift, Users, Settings, LogOut } from "lucide-react"
 
 interface CaregiverDashboardProps {
@@ -51,7 +52,7 @@ export function CaregiverDashboard({
           table: "bathroom_requests",
           filter: `profile_id=eq.${profile.id}`,
         },
-        async (payload) => {
+        async (payload: RealtimePostgresChangesPayload<{ [key: string]: any }>) => {
           // Only refresh if this is a new request being added
           // If it's an update (status change), we handle it optimistically via onRequestResolved
           if (payload.eventType === "INSERT") {
@@ -90,7 +91,7 @@ export function CaregiverDashboard({
           table: "profiles",
           filter: `id=eq.${profile.id}`,
         },
-        (payload) => {
+        (payload: RealtimePostgresChangesPayload<{ [key: string]: any }>) => {
           if (payload.new && typeof payload.new === "object" && "total_points" in payload.new) {
             setTotalPoints(payload.new.total_points as number)
           }

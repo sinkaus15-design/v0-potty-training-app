@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       - Use their name
       
       Just return the message, nothing else.`,
-      maxTokens: 100,
+      maxOutputTokens: 100,
     })
 
     return NextResponse.json({ message: text })

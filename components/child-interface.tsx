@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { StarField } from "@/components/star-field"
 import { PointsDisplay } from "@/components/points-display"
 import { Droplets, CircleDot, Home, Volume2, VolumeX, Rocket, Trophy } from "lucide-react"
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 
 interface ChildInterfaceProps {
   childName: string
@@ -113,7 +114,7 @@ export function ChildInterface({
           table: "profiles",
           filter: `id=eq.${userId}`,
         },
-        (payload) => {
+        (payload: RealtimePostgresChangesPayload<{ [key: string]: any }>) => {
           if (payload.new && typeof payload.new === "object" && "total_points" in payload.new) {
             setPoints(payload.new.total_points as number)
           }
