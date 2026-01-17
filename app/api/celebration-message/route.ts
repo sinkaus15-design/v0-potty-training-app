@@ -1,3 +1,5 @@
+export const runtime = "nodejs"
+
 import { generateText } from "ai"
 import { NextResponse } from "next/server"
 
